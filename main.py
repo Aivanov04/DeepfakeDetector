@@ -19,6 +19,15 @@ def read_data(directory):
      )
      print(type(train_dataset))
 
+def build_model():
+    model = keras.applications.Xception(
+        input_shape=(IMG_SIZE[0], IMG_SIZE[1], 3), # Image size, w x h x (#Colour channels)
+        include_top=False,                         # Set to false, don't want original ImageNet layer
+        weights="imagenet",                        # Keep ImageNet weights, convolutional layers learnt feature detectors
+    )
+
+    model.trainable = False
+
 def main():
     print("Hello World!")
     read_data("datasets/Dataset/Train")
