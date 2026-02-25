@@ -1,4 +1,5 @@
 import tensorflow as tf
+from keras.src.applications.xception import preprocess_input
 from keras.src.layers import GlobalAveragePooling2D, Dropout, Dense
 from keras.src.utils import image_dataset_from_directory
 from tensorflow import keras
@@ -9,16 +10,24 @@ from tensorflow import keras
 IMG_SIZE = (299, 299)
 # Number of images trained at once
 BATCH_SIZE = 32
+AUTOTUNE = tf.data.AUTOTUNE
 
 def read_data(directory):
-     train_dataset = image_dataset_from_directory(
+     dataset = image_dataset_from_directory(
          directory,
          image_size=IMG_SIZE,
          batch_size=BATCH_SIZE,
          label_mode="binary",
          # Potentially add -> shuffle=True
      )
-     print(type(train_dataset))
+
+     # Xception preprocessing steps
+     dataset = dataset.map(
+         lambda x, y: (preprocess_input(x), y),
+         num_parallel_calls=AUTOTUNE
+     )
+
+     return dataset.prefetch(AUTOTUNE)
 
 def build_model():
     basic_model = keras.applications.Xception(
@@ -47,10 +56,25 @@ def build_model():
     return model
 
 def main():
-    print("Hello World!")
-    read_data("datasets/Dataset/Train")
-    read_data("datasets/Dataset/Test")
-    read_data("datasets/Dataset/Validation")
+    print("GPUs detected:", tf.config.list_physical_devices('GPU'))
+    print("Built with CUDA:", tf.test.is_built_with_cuda())
+
+    train_dataset = read_data("datasets/Dataset/Train")
+    val_dataset = read_data("datasets/Dataset/Validation")
+    test_dataset = read_data("datasets/Dataset/Test")
+
+    model = build_model()
+    model.summary()
+
+    history = model.fit(
+        train_dataset,
+        validation_data=val_dataset,
+        epochs=10
+    )
+
+    print("\nEvaluating on test set:")
+    model.evaluate(test_dataset)
+
 
 if __name__ == "__main__":
     main()
