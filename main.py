@@ -1,4 +1,5 @@
 import tensorflow as tf
+from keras.src.layers import GlobalAveragePooling2D, Dropout, Dense
 from keras.src.utils import image_dataset_from_directory
 from tensorflow import keras
 
@@ -20,13 +21,30 @@ def read_data(directory):
      print(type(train_dataset))
 
 def build_model():
-    model = keras.applications.Xception(
+    basic_model = keras.applications.Xception(
         input_shape=(IMG_SIZE[0], IMG_SIZE[1], 3), # Image size, w x h x (#Colour channels)
         include_top=False,                         # Set to false, don't want original ImageNet layer
         weights="imagenet",                        # Keep ImageNet weights, convolutional layers learnt feature detectors
     )
 
-    model.trainable = False
+    # Don't update the pretrained weights during new training
+    basic_model.trainable = False
+
+    inputs = keras.layers.Input(shape=(IMG_SIZE[0], IMG_SIZE[1], 3))    # Input parameters
+    x = basic_model(inputs)             # Tensor created out of the simple model with inputs layer
+    x = GlobalAveragePooling2D()(x)     # Create a layer, flattening to 2D and apply x
+    x = Dropout(0.3)(x)                 # Chance to set neurons to 0, prevent overfitting
+    outputs = Dense(1, activation="sigmoid")(x) # Dense layer with 1 neuron, to get an output
+
+    model = keras.Model(inputs=inputs, outputs=outputs) # Full model
+    # May need adjustments
+    model.compile(
+        optimizer="adam",
+        loss="binary_crossentropy",
+        metrics=["accuracy"]
+    )
+
+    return model
 
 def main():
     print("Hello World!")
