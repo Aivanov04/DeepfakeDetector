@@ -1,7 +1,9 @@
 import torch
+from torch import nn, optim
 from torch.utils.data import DataLoader
 from torchvision import datasets, transforms
 import os
+import timm
 
 # read about __init__.py and __main__.py
 
@@ -39,6 +41,32 @@ def read_data(data_dir, batch_size=BATCH_SIZE, img_size=IMG_SIZE, num_workers=4)
 
     return loaders_dict["Train"], loaders_dict["Validation"], loaders_dict["Test"]
 
+def train_model(num_classes=2, train_loader=None, optimizer=None):
+    model = timm.create_model("xception", pretrained=True, num_classes=num_classes)
+    model.to(DEVICE)
+
+    # Maybe take out of function
+    criterion = nn.CrossEntropyLoss()
+    optimizer = optim.Adam(model.parameters(), lr=1e-4)
+
+    for epoch in range(NUM_EPOCHS):
+        model.train()
+        running_loss = 0
+        for images, labels in train_loader:
+            images, labels = images.to(DEVICE), labels.to(DEVICE)
+
+            optimizer.zero_grad()
+            outputs = model(images)
+            loss = criterion(outputs, labels)
+            loss.backward()
+            optimizer.step()
+
+            running_loss += loss.item()
+
+        avg_loss = running_loss / len(train_loader)
+        print(f"Epoch {epoch+1}/{NUM_EPOCHS}, Training Loss: {avg_loss:.4f}")
+
+
 def main():
     print("pytorch version:", torch.__version__)
     print("CUDA:", torch.version.cuda)
@@ -52,6 +80,12 @@ def main():
     print(f"training batches: {len(train_loader)}")
     print(f"validation batches: {len(val_loader)}")
     print(f"test batches: {len(test_loader)}")
+
+    # Auto set number of classes based on folders
+    train_dir = os.path.join(DATA_PATH, "Train")
+    num_classes = len([name for name in os.listdir(train_dir)
+                       if os.path.isdir(os.path.join(train_dir, name))])
+    train_model(num_classes=num_classes, train_loader=train_loader)
 
     return
 
