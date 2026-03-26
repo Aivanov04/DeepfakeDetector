@@ -1,80 +1,59 @@
-import tensorflow as tf
-from keras.src.applications.xception import preprocess_input
-from keras.src.layers import GlobalAveragePooling2D, Dropout, Dense
-from keras.src.utils import image_dataset_from_directory
-from tensorflow import keras
+import torch
+from torch.utils.data import DataLoader
+from torchvision import datasets, transforms
+import os
 
 # read about __init__.py and __main__.py
 
+# CONFIG?
+DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 # Resizing input images to 299 x 299, default input size for Xception (CNN)
-IMG_SIZE = (299, 299)
+IMG_SIZE_OLD = (299, 299)
+IMG_SIZE = 299
 # Number of images trained at once
 BATCH_SIZE = 32
-AUTOTUNE = tf.data.AUTOTUNE
+NUM_EPOCHS = 1
+DATA_PATH = "datasets/Dataset"
 
-def read_data(directory):
-     dataset = image_dataset_from_directory(
-         directory,
-         image_size=IMG_SIZE,
-         batch_size=BATCH_SIZE,
-         label_mode="binary",
-         # Potentially add -> shuffle=True
-     )
 
-     # Xception preprocessing steps
-     dataset = dataset.map(
-         lambda x, y: (preprocess_input(x), y),
-         num_parallel_calls=AUTOTUNE
-     )
+def read_data(data_dir, batch_size=BATCH_SIZE, img_size=IMG_SIZE, num_workers=4):
 
-     return dataset.prefetch(AUTOTUNE)
+    # Resize, convert to tensor, normalize [-1,1]
+    transform = transforms.Compose([
+        transforms.Resize((img_size, img_size)),
+        transforms.ToTensor(),
+        transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5])
+    ])
 
-def build_model():
-    basic_model = keras.applications.Xception(
-        input_shape=(IMG_SIZE[0], IMG_SIZE[1], 3), # Image size, w x h x (#Colour channels)
-        include_top=False,                         # Set to false, don't want original ImageNet layer
-        weights="imagenet",                        # Keep ImageNet weights, convolutional layers learnt feature detectors
-    )
+    datasets_dict = {}
+    loaders_dict = {}
 
-    # Don't update the pretrained weights during new training
-    basic_model.trainable = False
+    for split in ["Train", "Validation", "Test"]:
+        path = os.path.join(data_dir, split)
+        ds = datasets.ImageFolder(path, transform=transform)
+        shuffle = True if split == "Train" else False
+        loader = DataLoader(ds, batch_size=batch_size, shuffle=shuffle, num_workers=num_workers, pin_memory=True)
 
-    inputs = keras.layers.Input(shape=(IMG_SIZE[0], IMG_SIZE[1], 3))    # Input parameters
-    x = basic_model(inputs)             # Tensor created out of the simple model with inputs layer
-    x = GlobalAveragePooling2D()(x)     # Create a layer, flattening to 2D and apply x
-    x = Dropout(0.3)(x)                 # Chance to set neurons to 0, prevent overfitting
-    outputs = Dense(1, activation="sigmoid")(x) # Dense layer with 1 neuron, to get an output
+        datasets_dict[split] = ds
+        loaders_dict[split] = loader
 
-    model = keras.Model(inputs=inputs, outputs=outputs) # Full model
-    # May need adjustments
-    model.compile(
-        optimizer="adam",
-        loss="binary_crossentropy",
-        metrics=["accuracy"]
-    )
-
-    return model
+    return loaders_dict["Train"], loaders_dict["Validation"], loaders_dict["Test"]
 
 def main():
-    print("GPUs detected:", tf.config.list_physical_devices('GPU'))
-    print("Built with CUDA:", tf.test.is_built_with_cuda())
+    print("pytorch version:", torch.__version__)
+    print("CUDA:", torch.version.cuda)
+    print("GPU:", torch.cuda.is_available())
+    print("GPU name:", torch.cuda.get_device_name(0))
 
-    train_dataset = read_data("datasets/Dataset/Train")
-    val_dataset = read_data("datasets/Dataset/Validation")
-    test_dataset = read_data("datasets/Dataset/Test")
+    print(f"Using this: {DEVICE}")
 
-    model = build_model()
-    model.summary()
+    train_loader, val_loader, test_loader = read_data("datasets/Dataset")
 
-    history = model.fit(
-        train_dataset,
-        validation_data=val_dataset,
-        epochs=10
-    )
+    print(f"training batches: {len(train_loader)}")
+    print(f"validation batches: {len(val_loader)}")
+    print(f"test batches: {len(test_loader)}")
 
-    print("\nEvaluating on test set:")
-    model.evaluate(test_dataset)
-
+    return
 
 if __name__ == "__main__":
     main()
