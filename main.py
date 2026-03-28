@@ -2,6 +2,7 @@ import torch
 from torch import nn, optim
 from torch.utils.data import DataLoader, Subset
 from torchvision import datasets, transforms
+from tqdm import tqdm
 import os
 import timm
 import random
@@ -78,7 +79,7 @@ def train_model(num_classes=2, train_loader=None, val_loader=None, optimizer=Non
     for epoch in range(NUM_EPOCHS):
         model.train()
         running_loss = 0
-        for images, labels in train_loader:
+        for images, labels in tqdm(train_loader, desc=f"Epoch {epoch + 1}"):
             images, labels = images.to(DEVICE), labels.to(DEVICE)
 
             optimizer.zero_grad()
@@ -92,7 +93,7 @@ def train_model(num_classes=2, train_loader=None, val_loader=None, optimizer=Non
         avg_loss = running_loss / len(train_loader)
         val_acc = evaluate(model, val_loader)
 
-        print(f"Epoch {epoch + 1}/{NUM_EPOCHS}, "
+        print(f"\nEpoch {epoch + 1}/{NUM_EPOCHS}, "
               f"Training Loss: {avg_loss:.4f}, "
               f"Val Acc: {val_acc:.4f}")
 
