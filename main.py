@@ -5,6 +5,9 @@ from torchvision import datasets, transforms
 import os
 import timm
 
+# https://docs.pytorch.org/docs/stable/backends.html#torch.backends.cudnn.benchmark
+torch.backends.cudnn.benchmark = True
+
 # read about __init__.py and __main__.py
 
 # CONFIG?
@@ -41,13 +44,24 @@ def read_data(data_dir, batch_size=BATCH_SIZE, img_size=IMG_SIZE, num_workers=4)
 
     return loaders_dict["Train"], loaders_dict["Validation"], loaders_dict["Test"]
 
-def train_model(num_classes=2, train_loader=None, optimizer=None):
+def train_model(num_classes=2, train_loader=None, val_loader=None, optimizer=None):
     model = timm.create_model("xception", pretrained=True, num_classes=num_classes)
+    # Freeze all layers
+    for param in model.parameters():
+        param.requires_grad = False
+
+    # Unfreeze classifier layer
+    for param in model.get_classifier().parameters():
+        param.requires_grad = True
+
     model.to(DEVICE)
 
     # Maybe take out of function
     criterion = nn.CrossEntropyLoss()
-    optimizer = optim.Adam(model.parameters(), lr=1e-4)
+
+    # Trains unfrozen layers
+    if optimizer is None:
+        optimizer = optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=1e-4)
 
     for epoch in range(NUM_EPOCHS):
         model.train()
@@ -64,14 +78,31 @@ def train_model(num_classes=2, train_loader=None, optimizer=None):
             running_loss += loss.item()
 
         avg_loss = running_loss / len(train_loader)
-        print(f"Epoch {epoch+1}/{NUM_EPOCHS}, Training Loss: {avg_loss:.4f}")
+        val_acc = evaluate(model, val_loader)
 
+        print(f"Epoch {epoch + 1}/{NUM_EPOCHS}, "
+              f"Training Loss: {avg_loss:.4f}, "
+              f"Val Acc: {val_acc:.4f}")
+
+def evaluate(model, loader):
+    model.eval()
+    correct = 0
+    total = 0
+    with torch.no_grad():
+        for images, labels in loader:
+            images, labels = images.to(DEVICE), labels.to(DEVICE)
+            outputs = model(images)
+            predictions = outputs.argmax(dim=1)
+            correct += (predictions == labels).sum().item()
+            total += labels.size(0)
+
+    return correct / total
 
 def main():
     print("pytorch version:", torch.__version__)
     print("CUDA:", torch.version.cuda)
-    print("GPU:", torch.cuda.is_available())
-    print("GPU name:", torch.cuda.get_device_name(0))
+    if torch.cuda.is_available():
+        print("GPU name:", torch.cuda.get_device_name(0))
 
     print(f"Using this: {DEVICE}")
 
@@ -85,7 +116,11 @@ def main():
     train_dir = os.path.join(DATA_PATH, "Train")
     num_classes = len([name for name in os.listdir(train_dir)
                        if os.path.isdir(os.path.join(train_dir, name))])
-    train_model(num_classes=num_classes, train_loader=train_loader)
+    train_model(
+        num_classes=num_classes,
+        train_loader=train_loader,
+        val_loader=val_loader
+    )
 
     return
 
