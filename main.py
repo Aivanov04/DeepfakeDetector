@@ -1,9 +1,10 @@
 import torch
 from torch import nn, optim
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Subset
 from torchvision import datasets, transforms
 import os
 import timm
+import random
 
 # https://docs.pytorch.org/docs/stable/backends.html#torch.backends.cudnn.benchmark
 torch.backends.cudnn.benchmark = True
@@ -21,25 +22,36 @@ NUM_EPOCHS = 1
 DATA_PATH = "datasets/Dataset"
 
 
-def read_data(data_dir, batch_size=BATCH_SIZE, img_size=IMG_SIZE, num_workers=4):
+def read_data(data_dir, batch_size=BATCH_SIZE, img_size=IMG_SIZE, num_workers=4, subset=1.0):
 
-    # Resize, convert to tensor, normalize [-1,1]
     transform = transforms.Compose([
         transforms.Resize((img_size, img_size)),
         transforms.ToTensor(),
         transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5])
     ])
 
-    datasets_dict = {}
     loaders_dict = {}
 
     for split in ["Train", "Validation", "Test"]:
         path = os.path.join(data_dir, split)
-        ds = datasets.ImageFolder(path, transform=transform)
-        shuffle = True if split == "Train" else False
-        loader = DataLoader(ds, batch_size=batch_size, shuffle=shuffle, num_workers=num_workers, pin_memory=True)
+        dataset = datasets.ImageFolder(path, transform=transform)
 
-        datasets_dict[split] = ds
+        # Train on a subset of images, ideally to speed up intermediate steps
+        if subset < 1.0:
+            subset_size = int(len(dataset) * subset)
+            indices = random.sample(range(len(dataset)), subset_size)
+            dataset = Subset(dataset, indices)
+
+        shuffle = True if split == "Train" else False
+
+        loader = DataLoader(
+            dataset,
+            batch_size=batch_size,
+            shuffle=shuffle,
+            num_workers=num_workers,
+            pin_memory=True
+        )
+
         loaders_dict[split] = loader
 
     return loaders_dict["Train"], loaders_dict["Validation"], loaders_dict["Test"]
@@ -106,7 +118,8 @@ def main():
 
     print(f"Using this: {DEVICE}")
 
-    train_loader, val_loader, test_loader = read_data("datasets/Dataset")
+    # CHANGE TO 1.0 OR REMOVE SUBSET WHEN READY
+    train_loader, val_loader, test_loader = read_data(DATA_PATH, subset=0.1)
 
     print(f"training batches: {len(train_loader)}")
     print(f"validation batches: {len(val_loader)}")
