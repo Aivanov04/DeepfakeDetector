@@ -62,8 +62,8 @@ def read_data(data_dir, batch_size=BATCH_SIZE, img_size=IMG_SIZE, num_workers=4,
 
     return loaders_dict["Train"], loaders_dict["Validation"], loaders_dict["Test"]
 
-def train_model(num_classes=2, train_loader=None, val_loader=None, optimizer=None):
-    model = timm.create_model("xception", pretrained=True, num_classes=num_classes)
+def train_model(model_name="xception", num_classes=2, train_loader=None, val_loader=None, optimizer=None):
+    model = timm.create_model(model_name, pretrained=True, num_classes=num_classes)
     # Freeze all layers
     for param in model.parameters():
         param.requires_grad = False
@@ -87,7 +87,7 @@ def train_model(num_classes=2, train_loader=None, val_loader=None, optimizer=Non
 
         model.train()
         running_loss = 0
-        for images, labels in tqdm(train_loader, desc=f"Epoch {epoch + 1}"):
+        for images, labels in tqdm(train_loader, desc=f"{model_name} | Epoch {epoch + 1}"):
             images, labels = images.to(DEVICE, non_blocking=True), labels.to(DEVICE, non_blocking=True)
 
             optimizer.zero_grad()
@@ -167,60 +167,62 @@ def main():
     num_classes = len([name for name in os.listdir(train_dir)
                        if os.path.isdir(os.path.join(train_dir, name))])
 
-    model = train_model(
-        num_classes=num_classes,
-        train_loader=train_loader,
-        val_loader=val_loader
-    )
-
-    # Evaluate on test set
-    test_acc, test_prec, test_rec, test_f1, test_auc, test_fpr, test_fnr, test_cm = evaluate(model, test_loader)
+    models = ["xception", "resnet50d", "efficientnet_b0", "densenet201", "tresnet_m"]
 
     file_exists = os.path.isfile(CSV_FILE)
 
-    with open(CSV_FILE, mode="a", newline="") as file:
-        writer = csv.writer(file)
+    if not file_exists:
+        with open(CSV_FILE, "w") as f:
+            writer = csv.writer(f)
+            writer.writerow(["model", "accuracy", "precision", "recall", "f1", "auc", "fpr", "fnr"])
 
-        # Write header once
-        if not file_exists:
+    for model_name in models:
+        print(f"Training {model_name}")
+
+        model = train_model(
+            model_name=model_name,
+            num_classes=num_classes,
+            train_loader=train_loader,
+            val_loader=val_loader
+        )
+
+        # Evaluate on test set
+        test_acc, test_prec, test_rec, test_f1, test_auc, test_fpr, test_fnr, test_cm = evaluate(model, test_loader)
+
+        # Open and append to CSV
+        with open(CSV_FILE, mode="a", newline="") as file:
+            writer = csv.writer(file)
+
+            # Write results
             writer.writerow([
-                "model",
-                "accuracy",
-                "precision",
-                "recall",
-                "f1",
-                "auc",
-                "fpr",
-                "fnr"
+                model_name,
+                test_acc,
+                test_prec,
+                test_rec,
+                test_f1,
+                test_auc,
+                test_fpr,
+                test_fnr
             ])
 
-        # Write results
-        # todo CHANGE XCEPTION TO BE PER ALG
-        writer.writerow([
-            "xception",
-            test_acc,
-            test_prec,
-            test_rec,
-            test_f1,
-            test_auc,
-            test_fpr,
-            test_fnr
-        ])
+        print("\nFinal Test Evaluation")
 
-    print("\nFinal Test Evaluation")
+        print(f"\nThe following results written to {CSV_FILE}")
 
-    print(f"\nThe following results written to {CSV_FILE}")
+        print("\nConfusion Matrix")
+        print(test_cm)
 
-    print("\nConfusion Matrix")
-    print(test_cm)
+        print(f"Test Acc: {test_acc:.4f}\n"
+              f"Precision: {test_prec:.4f}\n"
+              f"Recall: {test_rec:.4f}\n"
+              f"F1: {test_f1:.4f}\n"
+              f"AUC: {test_auc:.4f}\n"
+              f"FPR: {test_fpr:.4f}\n"
+              f"FNR: {test_fnr:.4f}")
 
-    print(f"Test Acc: {test_acc:.4f}\n"
-          f"Precision: {test_prec:.4f}\n"
-          f"Recall: {test_rec:.4f}\n"
-          f"F1: {test_f1:.4f}\n"
-          f"AUC: {test_auc:.4f}\n"
-          f"FPR: {test_fpr:.4f}\n"
-          f"FNR: {test_fnr:.4f}")
+        # CLeanup memory
+        del model
+        torch.cuda.empty_cache()
 
 if __name__ == "__main__":
     main()
