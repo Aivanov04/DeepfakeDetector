@@ -9,6 +9,7 @@ import random
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score, confusion_matrix
 import torch.nn.functional as F
 import time
+import csv
 
 # https://docs.pytorch.org/docs/stable/backends.html#torch.backends.cudnn.benchmark
 torch.backends.cudnn.benchmark = True
@@ -24,6 +25,7 @@ IMG_SIZE = 299
 BATCH_SIZE = 32
 NUM_EPOCHS = 2
 DATA_PATH = "datasets/Dataset"
+CSV_FILE = "benchmark_results.csv"
 
 
 def read_data(data_dir, batch_size=BATCH_SIZE, img_size=IMG_SIZE, num_workers=4, subset=1.0):
@@ -102,7 +104,7 @@ def train_model(num_classes=2, train_loader=None, val_loader=None, optimizer=Non
         # End time taken
         epoch_time = time.time() - start_time
 
-        print(f"Epoch {epoch + 1}/{NUM_EPOCHS}\n"
+        print(f"\nEpoch {epoch + 1}/{NUM_EPOCHS}\n"
               f"Loss: {avg_loss:.4f}\n"
               f"Acc: {val_acc:.4f}\n"
               f"F1: {val_f1:.4f}\n"
@@ -171,9 +173,43 @@ def main():
         val_loader=val_loader
     )
 
+    # Evaluate on test set
+    test_acc, test_prec, test_rec, test_f1, test_auc, test_fpr, test_fnr, test_cm = evaluate(model, test_loader)
+
+    file_exists = os.path.isfile(CSV_FILE)
+
+    with open(CSV_FILE, mode="a", newline="") as file:
+        writer = csv.writer(file)
+
+        # Write header once
+        if not file_exists:
+            writer.writerow([
+                "model",
+                "accuracy",
+                "precision",
+                "recall",
+                "f1",
+                "auc",
+                "fpr",
+                "fnr"
+            ])
+
+        # Write results
+        # todo CHANGE XCEPTION TO BE PER ALG
+        writer.writerow([
+            "xception",
+            test_acc,
+            test_prec,
+            test_rec,
+            test_f1,
+            test_auc,
+            test_fpr,
+            test_fnr
+        ])
+
     print("\nFinal Test Evaluation")
 
-    test_acc, test_prec, test_rec, test_f1, test_auc, test_fpr, test_fnr, test_cm = evaluate(model, test_loader)
+    print(f"\nThe following results written to {CSV_FILE}")
 
     print("\nConfusion Matrix")
     print(test_cm)
