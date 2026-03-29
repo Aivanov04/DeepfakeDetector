@@ -6,20 +6,22 @@ from tqdm import tqdm
 import os
 import timm
 import random
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score
+import torch.nn.functional as F
 
 # https://docs.pytorch.org/docs/stable/backends.html#torch.backends.cudnn.benchmark
 torch.backends.cudnn.benchmark = True
 
 # read about __init__.py and __main__.py
 
-# CONFIG?
+# CONFIG... use nvidia-smi to check GPU activity
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 # Resizing input images to 299 x 299, default input size for Xception (CNN)
 IMG_SIZE_OLD = (299, 299)
 IMG_SIZE = 299
 # Number of images trained at once
 BATCH_SIZE = 32
-NUM_EPOCHS = 1
+NUM_EPOCHS = 2
 DATA_PATH = "datasets/Dataset"
 
 
@@ -80,7 +82,7 @@ def train_model(num_classes=2, train_loader=None, val_loader=None, optimizer=Non
         model.train()
         running_loss = 0
         for images, labels in tqdm(train_loader, desc=f"Epoch {epoch + 1}"):
-            images, labels = images.to(DEVICE), labels.to(DEVICE)
+            images, labels = images.to(DEVICE, non_blocking=True), labels.to(DEVICE, non_blocking=True)
 
             optimizer.zero_grad()
             outputs = model(images)
@@ -91,25 +93,39 @@ def train_model(num_classes=2, train_loader=None, val_loader=None, optimizer=Non
             running_loss += loss.item()
 
         avg_loss = running_loss / len(train_loader)
-        val_acc = evaluate(model, val_loader)
+        val_acc, val_prec, val_rec, val_f1, val_auc = evaluate(model, val_loader)
 
         print(f"\nEpoch {epoch + 1}/{NUM_EPOCHS}, "
-              f"Training Loss: {avg_loss:.4f}, "
-              f"Val Acc: {val_acc:.4f}")
+              f"Loss: {avg_loss:.4f}, "
+              f"Acc: {val_acc:.4f}, "
+              f"F1: {val_f1:.4f}, "
+              f"AUC: {val_auc:.4f}")
 
 def evaluate(model, loader):
     model.eval()
-    correct = 0
-    total = 0
+    all_predictions = []
+    all_labels = []
+    all_probs = []
+
     with torch.no_grad():
         for images, labels in loader:
-            images, labels = images.to(DEVICE), labels.to(DEVICE)
+            images = images.to(DEVICE)
             outputs = model(images)
-            predictions = outputs.argmax(dim=1)
-            correct += (predictions == labels).sum().item()
-            total += labels.size(0)
 
-    return correct / total
+            probs = F.softmax(outputs, dim=1)[:, 1]  # probability of class 1 ("fake")
+            predictions = outputs.argmax(dim=1)
+
+            all_predictions.extend(predictions.cpu().numpy())
+            all_labels.extend(labels.numpy())
+            all_probs.extend(probs.cpu().numpy())
+
+    acc = accuracy_score(all_labels, all_predictions)
+    precision = precision_score(all_labels, all_predictions)
+    recall = recall_score(all_labels, all_predictions)
+    f1 = f1_score(all_labels, all_predictions)
+    auc = roc_auc_score(all_labels, all_probs)
+
+    return acc, precision, recall, f1, auc
 
 def main():
     print("pytorch version:", torch.__version__)
@@ -120,7 +136,7 @@ def main():
     print(f"Using this: {DEVICE}")
 
     # CHANGE TO 1.0 OR REMOVE SUBSET WHEN READY
-    train_loader, val_loader, test_loader = read_data(DATA_PATH, subset=0.1)
+    train_loader, val_loader, test_loader = read_data(DATA_PATH, subset=0.2)
 
     print(f"training batches: {len(train_loader)}")
     print(f"validation batches: {len(val_loader)}")
