@@ -6,8 +6,9 @@ from tqdm import tqdm
 import os
 import timm
 import random
-from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score, confusion_matrix
 import torch.nn.functional as F
+import time
 
 # https://docs.pytorch.org/docs/stable/backends.html#torch.backends.cudnn.benchmark
 torch.backends.cudnn.benchmark = True
@@ -79,6 +80,9 @@ def train_model(num_classes=2, train_loader=None, val_loader=None, optimizer=Non
         optimizer = optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=1e-4)
 
     for epoch in range(NUM_EPOCHS):
+        # Track time taken per epoch
+        start_time = time.time()
+
         model.train()
         running_loss = 0
         for images, labels in tqdm(train_loader, desc=f"Epoch {epoch + 1}"):
@@ -93,13 +97,19 @@ def train_model(num_classes=2, train_loader=None, val_loader=None, optimizer=Non
             running_loss += loss.item()
 
         avg_loss = running_loss / len(train_loader)
-        val_acc, val_prec, val_rec, val_f1, val_auc = evaluate(model, val_loader)
+        val_acc, val_prec, val_rec, val_f1, val_auc, val_fpr, val_fnr, val_cm = evaluate(model, val_loader)
 
-        print(f"\nEpoch {epoch + 1}/{NUM_EPOCHS}, "
-              f"Loss: {avg_loss:.4f}, "
-              f"Acc: {val_acc:.4f}, "
-              f"F1: {val_f1:.4f}, "
-              f"AUC: {val_auc:.4f}")
+        # End time taken
+        epoch_time = time.time() - start_time
+
+        print(f"Epoch {epoch + 1}/{NUM_EPOCHS}\n"
+              f"Loss: {avg_loss:.4f}\n"
+              f"Acc: {val_acc:.4f}\n"
+              f"F1: {val_f1:.4f}\n"
+              f"AUC: {val_auc:.4f}\n"
+              f"FPR: {val_fpr:.4f}\n"
+              f"FNR: {val_fnr:.4f}\n"
+              f"Time: {epoch_time:.2f}s\n")
 
     return model
 
@@ -126,8 +136,14 @@ def evaluate(model, loader):
     recall = recall_score(all_labels, all_predictions)
     f1 = f1_score(all_labels, all_predictions)
     auc = roc_auc_score(all_labels, all_probs)
+    cm = confusion_matrix(all_labels, all_predictions)
 
-    return acc, precision, recall, f1, auc
+    tn, fp, fn, tp = cm.ravel()
+
+    fpr = fp / (fp + tn)
+    fnr = fn / (fn + tp)
+
+    return acc, precision, recall, f1, auc, fpr, fnr, cm
 
 def main():
     print("pytorch version:", torch.__version__)
@@ -138,7 +154,7 @@ def main():
     print(f"Using this: {DEVICE}")
 
     # CHANGE TO 1.0 OR REMOVE SUBSET WHEN READY
-    train_loader, val_loader, test_loader = read_data(DATA_PATH, subset=0.2)
+    train_loader, val_loader, test_loader = read_data(DATA_PATH, subset=0.1)
 
     print(f"training batches: {len(train_loader)}")
     print(f"validation batches: {len(val_loader)}")
@@ -155,15 +171,20 @@ def main():
         val_loader=val_loader
     )
 
-    print("\nFinal Test Evaluation:")
+    print("\nFinal Test Evaluation")
 
-    test_acc, test_prec, test_rec, test_f1, test_auc = evaluate(model, test_loader)
+    test_acc, test_prec, test_rec, test_f1, test_auc, test_fpr, test_fnr, test_cm = evaluate(model, test_loader)
 
-    print(f"Test Acc: {test_acc:.4f}, "
-          f"Precision: {test_prec:.4f}, "
-          f"Recall: {test_rec:.4f}, "
-          f"F1: {test_f1:.4f}, "
-          f"AUC: {test_auc:.4f}")
+    print("\nConfusion Matrix")
+    print(test_cm)
+
+    print(f"Test Acc: {test_acc:.4f}\n"
+          f"Precision: {test_prec:.4f}\n"
+          f"Recall: {test_rec:.4f}\n"
+          f"F1: {test_f1:.4f}\n"
+          f"AUC: {test_auc:.4f}\n"
+          f"FPR: {test_fpr:.4f}\n"
+          f"FNR: {test_fnr:.4f}")
 
 if __name__ == "__main__":
     main()
