@@ -101,6 +101,8 @@ def train_model(num_classes=2, train_loader=None, val_loader=None, optimizer=Non
               f"F1: {val_f1:.4f}, "
               f"AUC: {val_auc:.4f}")
 
+    return model
+
 def evaluate(model, loader):
     model.eval()
     all_predictions = []
@@ -146,13 +148,22 @@ def main():
     train_dir = os.path.join(DATA_PATH, "Train")
     num_classes = len([name for name in os.listdir(train_dir)
                        if os.path.isdir(os.path.join(train_dir, name))])
-    train_model(
+
+    model = train_model(
         num_classes=num_classes,
         train_loader=train_loader,
         val_loader=val_loader
     )
 
-    return
+    print("\nFinal Test Evaluation:")
+
+    test_acc, test_prec, test_rec, test_f1, test_auc = evaluate(model, test_loader)
+
+    print(f"Test Acc: {test_acc:.4f}, "
+          f"Precision: {test_prec:.4f}, "
+          f"Recall: {test_rec:.4f}, "
+          f"F1: {test_f1:.4f}, "
+          f"AUC: {test_auc:.4f}")
 
 if __name__ == "__main__":
     main()
