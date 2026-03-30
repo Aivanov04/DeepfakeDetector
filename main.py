@@ -14,8 +14,6 @@ import csv
 # https://docs.pytorch.org/docs/stable/backends.html#torch.backends.cudnn.benchmark
 torch.backends.cudnn.benchmark = True
 
-# read about __init__.py and __main__.py
-
 # CONFIG... use nvidia-smi to check GPU activity
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 # Resizing input images to 299 x 299, default input size for Xception (CNN)
@@ -23,9 +21,14 @@ IMG_SIZE_OLD = (299, 299)
 IMG_SIZE = 299
 # Number of images trained at once
 BATCH_SIZE = 32
-NUM_EPOCHS = 2
 DATA_PATH = "datasets/Dataset"
 CSV_FILE = "benchmark_results.csv"
+# Model names by default are ["xception", "resnet50d", "efficientnet_b0", "densenet201", "tresnet_m"]
+MODELS = ["xception", "resnet50d", "efficientnet_b0", "densenet201", "tresnet_m"]
+# Number of epochs of training
+NUM_EPOCHS = 10
+# Subset of data chosen, used primarily for testing, now should be kept at 1.0 for ALL data
+SUBSET = 1.0
 
 
 def read_data(data_dir, batch_size=BATCH_SIZE, img_size=IMG_SIZE, num_workers=4, subset=1.0):
@@ -155,8 +158,7 @@ def main():
 
     print(f"Using this: {DEVICE}")
 
-    # CHANGE TO 1.0 OR REMOVE SUBSET WHEN READY
-    train_loader, val_loader, test_loader = read_data(DATA_PATH, subset=0.1)
+    train_loader, val_loader, test_loader = read_data(DATA_PATH, subset=SUBSET)
 
     print(f"training batches: {len(train_loader)}")
     print(f"validation batches: {len(val_loader)}")
@@ -167,8 +169,6 @@ def main():
     num_classes = len([name for name in os.listdir(train_dir)
                        if os.path.isdir(os.path.join(train_dir, name))])
 
-    models = ["xception", "resnet50d", "efficientnet_b0", "densenet201", "tresnet_m"]
-
     file_exists = os.path.isfile(CSV_FILE)
 
     if not file_exists:
@@ -176,7 +176,7 @@ def main():
             writer = csv.writer(f)
             writer.writerow(["model", "accuracy", "precision", "recall", "f1", "auc", "fpr", "fnr"])
 
-    for model_name in models:
+    for model_name in MODELS:
         print(f"Training {model_name}")
 
         model = train_model(
