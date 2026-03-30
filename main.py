@@ -16,13 +16,12 @@ torch.backends.cudnn.benchmark = True
 
 # CONFIG... use nvidia-smi to check GPU activity
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-# Resizing input images to 299 x 299, default input size for Xception (CNN)
-IMG_SIZE_OLD = (299, 299)
-IMG_SIZE = 299
+IMG_SIZE = 224
 # Number of images trained at once
 BATCH_SIZE = 32
 DATA_PATH = "datasets/Dataset"
 CSV_FILE = "benchmark_results.csv"
+EPOCH_CSV_FILE = "epoch_results.csv"
 # Model names by default are ["xception", "resnet50d", "efficientnet_b0", "densenet201", "tresnet_m"]
 MODELS = ["xception", "resnet50d", "efficientnet_b0", "densenet201", "tresnet_m"]
 # Number of epochs of training
@@ -65,7 +64,7 @@ def read_data(data_dir, batch_size=BATCH_SIZE, img_size=IMG_SIZE, num_workers=4,
 
     return loaders_dict["Train"], loaders_dict["Validation"], loaders_dict["Test"]
 
-def train_model(model_name="xception", num_classes=2, train_loader=None, val_loader=None, optimizer=None):
+def train_model(model_name="xception", num_classes=2, train_loader=None, val_loader=None, optimizer=None, epoch_csv=None):
     model = timm.create_model(model_name, pretrained=True, num_classes=num_classes)
     # Freeze all layers
     for param in model.parameters():
@@ -78,7 +77,7 @@ def train_model(model_name="xception", num_classes=2, train_loader=None, val_loa
     model.to(DEVICE)
 
     # Maybe take out of function
-    criterion = nn.CrossEntropyLoss()
+    criterion = nn.CrossEntropyLoss(weight=torch.tensor([1.0, 2.0]).to(DEVICE))
 
     # Trains unfrozen layers
     if optimizer is None:
@@ -106,6 +105,22 @@ def train_model(model_name="xception", num_classes=2, train_loader=None, val_loa
 
         # End time taken
         epoch_time = time.time() - start_time
+
+        if epoch_csv is not None:
+            with open(epoch_csv, mode="a", newline="") as file:
+                writer = csv.writer(file)
+                writer.writerow([
+                    model_name,
+                    epoch + 1,
+                    avg_loss,
+                    val_acc,
+                    val_prec,
+                    val_rec,
+                    val_f1,
+                    val_auc,
+                    val_fpr,
+                    val_fnr
+                ])
 
         print(f"\nEpoch {epoch + 1}/{NUM_EPOCHS}\n"
               f"Loss: {avg_loss:.4f}\n"
@@ -176,6 +191,13 @@ def main():
             writer = csv.writer(f)
             writer.writerow(["model", "accuracy", "precision", "recall", "f1", "auc", "fpr", "fnr"])
 
+    epoch_file_exists = os.path.isfile(EPOCH_CSV_FILE)
+
+    if not epoch_file_exists:
+        with open(EPOCH_CSV_FILE, "w") as f:
+            writer = csv.writer(f)
+            writer.writerow(["model", "epoch", "loss", "accuracy", "precision", "recall", "f1", "auc", "fpr", "fnr"])
+
     for model_name in MODELS:
         print(f"Training {model_name}")
 
@@ -183,7 +205,8 @@ def main():
             model_name=model_name,
             num_classes=num_classes,
             train_loader=train_loader,
-            val_loader=val_loader
+            val_loader=val_loader,
+            epoch_csv=EPOCH_CSV_FILE
         )
 
         # Evaluate on test set
